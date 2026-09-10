@@ -49,7 +49,13 @@ function toParams(args: { sport: Sport; season: number; league_id: string }): Le
 }
 
 function ok(data: unknown) {
-  return { content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }], structuredContent: data as Record<string, unknown> };
+  // MCP requires structuredContent to be an object, not an array — most read
+  // tools here return arrays (teams, rosters, ...), so wrap uniformly.
+  const structured = data !== null && typeof data === "object" && !Array.isArray(data) ? data : { result: data };
+  return {
+    content: [{ type: "text" as const, text: JSON.stringify(data, null, 2) }],
+    structuredContent: structured as Record<string, unknown>,
+  };
 }
 
 function errorResult(err: unknown) {

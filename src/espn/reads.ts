@@ -1,5 +1,5 @@
 import { getJson, leaguePath } from "./client.js";
-import { lineupSlotMap, proTeamMap, type Sport } from "./constants.js";
+import { defaultPositionMap, lineupSlotMap, proTeamMap, type Sport } from "./constants.js";
 import type {
   EspnLeagueResponse,
   EspnPlayer,
@@ -83,10 +83,11 @@ export function normalizePlayer(
 ): NormalizedPlayer {
   const slotMap = lineupSlotMap(sport);
   const teamMap = proTeamMap(sport);
+  const positionMap = defaultPositionMap(sport);
   return {
     id: player.id,
     name: player.fullName,
-    position: teamMap === undefined ? "" : (slotMap[player.defaultPositionId] ?? ""),
+    position: positionMap[player.defaultPositionId] ?? String(player.defaultPositionId),
     proTeam: teamMap[player.proTeamId] ?? String(player.proTeamId),
     eligibleSlotIds: player.eligibleSlots || [],
     eligibleSlotNames: (player.eligibleSlots || []).map((id) => slotMap[id] ?? String(id)),

@@ -95,6 +95,15 @@ export const FOOTBALL_POSITION_MAP: Record<number, string> = {
 // Basketball (fba)
 // ---------------------------------------------------------------------------
 
+/** defaultPositionId -> position, per cwendt94/espn-api (`POSITION_MAP[defaultPositionId - 1]`: 1-indexed over the same PG..C lineup-slot names). */
+export const BASKETBALL_POSITION_MAP: Record<number, string> = {
+  1: "PG",
+  2: "SG",
+  3: "SF",
+  4: "PF",
+  5: "C",
+};
+
 export const BASKETBALL_LINEUP_SLOT_MAP: Record<number, string> = {
   0: "PG",
   1: "SG",
@@ -245,6 +254,18 @@ export function proTeamMap(sport: Sport): Record<number, string> {
       return BASKETBALL_PRO_TEAM_MAP;
     case "flb":
       return BASEBALL_PRO_TEAM_MAP;
+  }
+}
+
+/** defaultPositionId -> position abbreviation. A DIFFERENT id space from lineup slots — see cheat sheets. */
+export function defaultPositionMap(sport: Sport): Record<number, string> {
+  switch (sport) {
+    case "ffl":
+      return FOOTBALL_POSITION_MAP;
+    case "fba":
+      return BASKETBALL_POSITION_MAP;
+    case "flb":
+      return BASEBALL_DEFAULT_POSITION_MAP;
   }
 }
 
