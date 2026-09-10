@@ -7,6 +7,7 @@ process.env.ESPN_S2 = "test-s2";
 process.env.ESPN_SWID = "{TEST-SWID}";
 
 import { buildAddDropBody } from "../src/espn/writes.js";
+import { redactBody } from "../src/espn/client.js";
 
 test("waiver claim payload matches the shape captured from the live site on 2026-09-08", () => {
   const body = buildAddDropBody({
@@ -59,4 +60,14 @@ test("FAAB bid is carried through on a waiver claim", () => {
     bid: 12,
   });
   assert.equal(body.bidAmount, 12);
+});
+
+test("redactBody never leaves the real memberId (SWID) in a body that could reach a transcript", () => {
+  const body = buildAddDropBody({ type: "WAIVER", teamId: 5, scoringPeriodId: 1, addPlayerId: 111 });
+  const redacted = redactBody(body);
+  assert.equal(redacted.memberId, "[redacted]");
+  assert.notEqual(redacted.memberId, "{TEST-SWID}");
+  // every other field is untouched
+  assert.equal(redacted.teamId, 5);
+  assert.deepEqual(redacted.items, body.items);
 });

@@ -133,7 +133,13 @@ export async function postTransaction(
   return result;
 }
 
-function redactBody(body: Record<string, unknown>): Record<string, unknown> {
+/**
+ * Redacts memberId (== SWID, one of the two auth cookies) from a request
+ * body. Applied both to what's persisted in logs/writes.jsonl AND to what
+ * write tools hand back to the calling MCP client — the client's output can
+ * end up in a transcript, so "never print cookie values" has to cover it too.
+ */
+export function redactBody(body: Record<string, unknown>): Record<string, unknown> {
   const clone: Record<string, unknown> = { ...body };
   if ("memberId" in clone) clone.memberId = "[redacted]";
   return clone;

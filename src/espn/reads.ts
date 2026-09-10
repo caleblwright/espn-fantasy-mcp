@@ -261,7 +261,9 @@ async function resolvePlayerNames(p: LeagueParams, ids: number[]): Promise<Map<n
   const unique = [...new Set(ids)];
   const map = new Map<number, string>();
   if (unique.length === 0) return map;
-  const filter = { players: { filterIds: { value: unique }, limit: unique.length } };
+  // No `limit` here: filterIds already bounds the result set exactly, and
+  // ESPN's API rejects a `limit` that isn't paired with a `sort*` clause.
+  const filter = { players: { filterIds: { value: unique } } };
   const data = await fetchLeague(p, ["kona_player_info"], {}, { "X-Fantasy-Filter": JSON.stringify(filter) });
   const players = ((data as unknown as { players?: Array<{ player: EspnPlayer }> }).players || []) as Array<{
     player: EspnPlayer;
@@ -279,14 +281,14 @@ export async function getTransactions(p: LeagueParams) {
   const raw = ((data as unknown as { transactions?: EspnTransaction[] }).transactions || []).filter(
     (t) => t.status === "EXECUTED",
   );
-  const ids = raw.flatMap((t) => t.items.map((i) => i.playerId));
+  const ids = raw.flatMap((t) => (t.items || []).map((i) => i.playerId));
   const names = await resolvePlayerNames(p, ids);
   return raw.map((t) => ({
     id: t.id,
     teamId: t.teamId,
     type: t.type,
     scoringPeriodId: t.scoringPeriodId,
-    items: t.items.map((i) => ({
+    items: (t.items || []).map((i) => ({
       type: i.type,
       playerId: i.playerId,
       playerName: names.get(i.playerId) ?? `#${i.playerId}`,
@@ -303,7 +305,7 @@ export async function getTransactions(p: LeagueParams) {
 export async function getPending(p: LeagueParams) {
   const data = await fetchLeague(p, ["mPendingTransactions"]);
   const raw = (data as unknown as { pendingTransactions?: EspnPendingTransaction[] }).pendingTransactions || [];
-  const ids = raw.flatMap((t) => t.items.map((i) => i.playerId));
+  const ids = raw.flatMap((t) => (t.items || []).map((i) => i.playerId));
   const names = await resolvePlayerNames(p, ids);
   return raw.map((t) => ({
     id: t.id,
@@ -312,7 +314,7 @@ export async function getPending(p: LeagueParams) {
     status: t.status,
     scoringPeriodId: t.scoringPeriodId,
     bidAmount: t.bidAmount,
-    items: t.items.map((i) => ({
+    items: (t.items || []).map((i) => ({
       type: i.type,
       playerId: i.playerId,
       playerName: names.get(i.playerId) ?? `#${i.playerId}`,
@@ -328,7 +330,7 @@ export async function getPending(p: LeagueParams) {
 
 export async function getPlayer(p: LeagueParams, opts: { id?: number; nameSearch?: string }) {
   if (opts.id !== undefined) {
-    const filter = { players: { filterIds: { value: [opts.id] }, limit: 1 } };
+    const filter = { players: { filterIds: { value: [opts.id] } } };
     const data = await fetchLeague(p, ["kona_player_info"], {}, { "X-Fantasy-Filter": JSON.stringify(filter) });
     const players = ((data as unknown as { players?: Array<{ player: EspnPlayer }> }).players || []) as Array<{
       player: EspnPlayer;
