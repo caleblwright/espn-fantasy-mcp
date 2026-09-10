@@ -146,6 +146,24 @@ export function redactBody(body: Record<string, unknown>): Record<string, unknow
 }
 
 /**
+ * Same redaction, but for a response body of unknown shape — ESPN's own
+ * transaction response echoes memberId back in the body, so a write result
+ * needs this on the way OUT just as much as the request needs it on the way
+ * in. Non-object bodies (parse failures, plain text) pass through untouched.
+ */
+export function redactUnknownBody(body: unknown): unknown {
+  if (body && typeof body === "object" && !Array.isArray(body) && "memberId" in body) {
+    return redactBody(body as Record<string, unknown>);
+  }
+  return body;
+}
+
+/** Redacts a WriteResult's response body for anything handed back to the MCP client or logged. */
+export function redactResult(result: WriteResult): WriteResult {
+  return { status: result.status, body: redactUnknownBody(result.body) };
+}
+
+/**
  * Appends one line to logs/writes.jsonl for a write tool invocation that
  * actually sent a request (dry runs are not logged — nothing was sent).
  * Called by the write tool handlers once verification has completed, so the
@@ -164,7 +182,7 @@ export function logWrite(
     args,
     requestBody: redactBody(requestBody),
     responseStatus: result.status,
-    responseBody: result.body,
+    responseBody: redactUnknownBody(result.body),
     verification,
   };
   const logPath = "logs/writes.jsonl";

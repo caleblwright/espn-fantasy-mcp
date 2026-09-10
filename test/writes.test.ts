@@ -7,7 +7,7 @@ process.env.ESPN_S2 = "test-s2";
 process.env.ESPN_SWID = "{TEST-SWID}";
 
 import { buildAddDropBody, buildLineupBody } from "../src/espn/writes.js";
-import { redactBody } from "../src/espn/client.js";
+import { redactBody, redactResult } from "../src/espn/client.js";
 
 test("waiver claim payload matches the shape captured from the live site on 2026-09-08", () => {
   const body = buildAddDropBody({
@@ -108,4 +108,24 @@ test("redactBody never leaves the real memberId (SWID) in a body that could reac
   // every other field is untouched
   assert.equal(redacted.teamId, 5);
   assert.deepEqual(redacted.items, body.items);
+});
+
+test("redactResult also strips memberId from ESPN's own response body, not just the outgoing request", () => {
+  // ESPN's transaction response echoes memberId back in the body — found live
+  // when a real set_lineup write's `response.body.memberId` came back
+  // unredacted even after the request-side fix, and the same value had
+  // already been written to logs/writes.jsonl in plaintext.
+  const result = {
+    status: 200,
+    body: { id: "abc-123", teamId: 5, memberId: "{TEST-SWID}", status: "EXECUTED" },
+  };
+  const redacted = redactResult(result);
+  assert.equal((redacted.body as Record<string, unknown>).memberId, "[redacted]");
+  assert.equal((redacted.body as Record<string, unknown>).id, "abc-123");
+  assert.equal(redacted.status, 200);
+});
+
+test("redactResult passes through a non-object response body untouched", () => {
+  const redacted = redactResult({ status: 500, body: "plain text error" });
+  assert.equal(redacted.body, "plain text error");
 });

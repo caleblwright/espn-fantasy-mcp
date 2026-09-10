@@ -1,4 +1,4 @@
-import { logWrite, postTransaction, redactBody, writesEnabled } from "./client.js";
+import { logWrite, postTransaction, redactBody, redactResult, writesEnabled } from "./client.js";
 import { requireCookies } from "../env.js";
 import { IR_SLOT_ID, type Sport } from "./constants.js";
 import { getLeague, getRosters, type LeagueParams, type NormalizedPlayer } from "./reads.js";
@@ -86,7 +86,7 @@ async function runAddDrop(
   const verification = { transactions: await import("./reads.js").then((m) => m.getPending(p)) };
   const resolvedVerification = { transactions: await verification.transactions };
   logWrite(toolName, args, body, result, resolvedVerification);
-  return { dryRun: false, sent: redactBody(body), response: result, verification: resolvedVerification };
+  return { dryRun: false, sent: redactBody(body), response: redactResult(result), verification: resolvedVerification };
 }
 
 export async function waiverClaim(
@@ -149,7 +149,7 @@ export async function cancelClaim(
   const { getPending } = await import("./reads.js");
   const verification = { pending: await getPending(p) };
   logWrite("cancel_claim", { ...p, ...args }, body, result, verification);
-  return { dryRun: false, sent: redactBody(body), response: result, verification };
+  return { dryRun: false, sent: redactBody(body), response: redactResult(result), verification };
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +216,7 @@ export async function setLineup(
   const result = await postTransaction(p.sport, p.season, p.leagueId, body);
   const verification = { roster: await teamRoster(p, args.teamId) };
   logWrite("set_lineup", { ...p, ...args }, body, result, verification);
-  return { dryRun: false, validation, sent: redactBody(body), response: result, verification };
+  return { dryRun: false, validation, sent: redactBody(body), response: redactResult(result), verification };
 }
 
 export async function moveToIr(
