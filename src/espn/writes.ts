@@ -32,7 +32,7 @@ async function teamRoster(p: LeagueParams, teamId: number): Promise<NormalizedPl
 // waiver_claim / add_free_agent (same payload shape, different `type`)
 // ---------------------------------------------------------------------------
 
-function buildAddDropBody(opts: {
+export function buildAddDropBody(opts: {
   type: "WAIVER" | "FREEAGENT";
   teamId: number;
   scoringPeriodId: number;
