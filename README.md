@@ -118,10 +118,11 @@ Every tool takes `sport`, `season`, `league_id` (all default from `.env` if omit
 | `get_free_agents` | Free agents / waiver wire, filterable by slot, sorted by ownership or projection |
 | `get_matchups` | A scoring period's matchups: totals and live projections |
 | `get_boxscore` | A scoring period's per-player actuals |
-| `get_transactions` | Executed transactions, resolved to player names |
+| `get_transactions` | Executed transactions (adds, drops, trades, draft picks), most recent first, resolved to player names. Paginated (`limit`/`offset`) — a full season's draft alone can be 100+ records |
 | `get_pending` | Pending waiver claims and trade proposals (read-only — this server never acts on trades) |
 | `get_player` | Look up a player by id or name search |
 | `snapshot` | League state in the line-oriented text format used by `frontoffice-manager`'s `tools/diff-snapshot.mjs` |
+| `optimal_lineup` | Suggests a starting lineup (fills the most restrictive slots first, then best remaining projection), ranked by season or a specific scoring period. A heuristic suggestion only — apply it yourself via `set_lineup` if you agree with it |
 
 ### Writes (rate-limited to 1 per 5 sec, every real send logged to `logs/writes.jsonl`)
 

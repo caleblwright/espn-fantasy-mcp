@@ -133,7 +133,10 @@ export interface EspnTransaction {
 export interface EspnMatchupTeamEntry {
   teamId: number;
   totalPoints?: number;
+  totalPointsLive?: number;
   totalProjectedPoints?: number;
+  totalProjectedPointsLive?: number;
+  winProbability?: number;
 }
 
 export interface EspnMatchup {

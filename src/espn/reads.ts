@@ -6,6 +6,7 @@ import type {
   EspnPendingTransaction,
   EspnTransaction,
   EspnMatchup,
+  EspnMatchupTeamEntry,
   EspnBoxscore,
 } from "./types.js";
 
@@ -151,7 +152,7 @@ export async function getTeams(p: LeagueParams) {
 // get_rosters
 // ---------------------------------------------------------------------------
 
-export async function getRosters(p: LeagueParams, teamId?: number) {
+export async function getRosters(p: LeagueParams, teamId?: number, periodId?: number) {
   const data = await fetchLeague(p, ["mRoster", "mTeam"]);
   const teams = (data.teams || []).filter((t) => teamId === undefined || t.id === teamId);
   return teams.map((t) => ({
@@ -162,6 +163,7 @@ export async function getRosters(p: LeagueParams, teamId?: number) {
         lineupSlotId: e.lineupSlotId,
         locked: e.playerPoolEntry.lineupLocked ?? false,
         teamId: t.id,
+        periodId,
       }),
     ),
   }));
@@ -214,6 +216,18 @@ export async function getFreeAgents(p: LeagueParams, opts: FreeAgentParams = {})
 // get_matchups
 // ---------------------------------------------------------------------------
 
+function summarizeMatchupTeam(t?: EspnMatchupTeamEntry) {
+  if (!t) return undefined;
+  return {
+    teamId: t.teamId,
+    totalPoints: t.totalPoints ?? 0,
+    totalPointsLive: t.totalPointsLive,
+    totalProjectedPoints: t.totalProjectedPoints,
+    totalProjectedPointsLive: t.totalProjectedPointsLive,
+    winProbability: t.winProbability,
+  };
+}
+
 export async function getMatchups(p: LeagueParams, scoringPeriodId: number) {
   const data = await fetchLeague(p, ["mMatchup", "mMatchupScore"], { scoringPeriodId });
   const raw = (data as unknown as { schedule?: EspnMatchup[] }).schedule || [];
@@ -221,8 +235,8 @@ export async function getMatchups(p: LeagueParams, scoringPeriodId: number) {
     .filter((m) => m.matchupPeriodId === scoringPeriodId || !scoringPeriodId)
     .map((m) => ({
       matchupPeriodId: m.matchupPeriodId,
-      home: m.home,
-      away: m.away,
+      home: summarizeMatchupTeam(m.home),
+      away: summarizeMatchupTeam(m.away),
       winner: m.winner,
     }));
 }
@@ -276,18 +290,37 @@ async function resolvePlayerNames(p: LeagueParams, ids: number[]): Promise<Map<n
 // get_transactions
 // ---------------------------------------------------------------------------
 
-export async function getTransactions(p: LeagueParams) {
+export interface TransactionsPage {
+  transactions: unknown[];
+  total: number;
+  count: number;
+  offset: number;
+  hasMore: boolean;
+}
+
+export async function getTransactions(
+  p: LeagueParams,
+  opts: { limit?: number; offset?: number } = {},
+): Promise<TransactionsPage> {
+  const limit = opts.limit ?? 50;
+  const offset = opts.offset ?? 0;
+
   const data = await fetchLeague(p, ["mTransactions2"]);
-  const raw = ((data as unknown as { transactions?: EspnTransaction[] }).transactions || []).filter(
-    (t) => t.status === "EXECUTED",
-  );
-  const ids = raw.flatMap((t) => (t.items || []).map((i) => i.playerId));
+  const all = ((data as unknown as { transactions?: EspnTransaction[] }).transactions || [])
+    .filter((t) => t.status === "EXECUTED")
+    // most recent first — the typical "what happened lately" use case
+    .sort((a, b) => (b.proposedDate ?? 0) - (a.proposedDate ?? 0));
+
+  const page = all.slice(offset, offset + limit);
+  const ids = page.flatMap((t) => (t.items || []).map((i) => i.playerId));
   const names = await resolvePlayerNames(p, ids);
-  return raw.map((t) => ({
+
+  const transactions = page.map((t) => ({
     id: t.id,
     teamId: t.teamId,
     type: t.type,
     scoringPeriodId: t.scoringPeriodId,
+    proposedDate: t.proposedDate ? new Date(t.proposedDate).toISOString() : undefined,
     items: (t.items || []).map((i) => ({
       type: i.type,
       playerId: i.playerId,
@@ -296,6 +329,14 @@ export async function getTransactions(p: LeagueParams) {
       toTeamId: i.toTeamId,
     })),
   }));
+
+  return {
+    transactions,
+    total: all.length,
+    count: transactions.length,
+    offset,
+    hasMore: offset + transactions.length < all.length,
+  };
 }
 
 // ---------------------------------------------------------------------------
