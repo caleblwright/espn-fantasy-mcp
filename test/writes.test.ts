@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 process.env.ESPN_S2 = "test-s2";
 process.env.ESPN_SWID = "{TEST-SWID}";
 
-import { buildAddDropBody } from "../src/espn/writes.js";
+import { buildAddDropBody, buildLineupBody } from "../src/espn/writes.js";
 import { redactBody } from "../src/espn/client.js";
 
 test("waiver claim payload matches the shape captured from the live site on 2026-09-08", () => {
@@ -60,6 +60,44 @@ test("FAAB bid is carried through on a waiver claim", () => {
     bid: 12,
   });
   assert.equal(body.bidAmount, 12);
+});
+
+test("lineup swap payload matches the shape captured from the live site on 2026-09-10", () => {
+  // Real capture: RJ Harvey (bench, slot 20) <-> MarShawn Lloyd (FLEX, slot 23).
+  const body = buildLineupBody({
+    teamId: 5,
+    scoringPeriodId: 1,
+    moves: [
+      { playerId: 4429023, toSlot: 23 },
+      { playerId: 4568490, toSlot: 20 },
+    ],
+    currentSlots: new Map([
+      [4429023, 20],
+      [4568490, 23],
+    ]),
+  });
+  assert.deepEqual(body, {
+    isLeagueManager: false,
+    teamId: 5,
+    type: "ROSTER",
+    memberId: "{TEST-SWID}",
+    scoringPeriodId: 1,
+    executionType: "EXECUTE",
+    items: [
+      { playerId: 4429023, type: "LINEUP", fromLineupSlotId: 20, toLineupSlotId: 23 },
+      { playerId: 4568490, type: "LINEUP", fromLineupSlotId: 23, toLineupSlotId: 20 },
+    ],
+  });
+});
+
+test("lineup body falls back to -1 for fromLineupSlotId when a player's current slot isn't known", () => {
+  const body = buildLineupBody({
+    teamId: 5,
+    scoringPeriodId: 1,
+    moves: [{ playerId: 1, toSlot: 20 }],
+    currentSlots: new Map(),
+  });
+  assert.equal((body.items as unknown[])[0] && (body.items as { fromLineupSlotId: number }[])[0].fromLineupSlotId, -1);
 });
 
 test("redactBody never leaves the real memberId (SWID) in a body that could reach a transcript", () => {

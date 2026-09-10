@@ -145,25 +145,43 @@ Every write tool takes `dry_run` (default `true`). A dry run validates and repor
 
 - **This uses an undocumented API.** ESPN can change response shapes or payloads at any time without notice; nothing here is officially supported.
 - **Cookies expire**, typically after about a month. When a request that used to work starts returning a clear "refresh your cookies" error, go back to step 3 above. The server never retries a 401 and never prints cookie values, even in error messages or logs.
-- **`set_lineup` (and the `move_to_ir` / `activate_from_ir` tools built on it) cannot execute a real write yet.** Validation and dry runs work fully — moves are checked against roster membership, slot eligibility, lock state, and slot counts, and you get a full report of what would happen. But the exact JSON body ESPN's site sends for a lineup move has not been captured from a live session (only the waiver-claim and cancel-claim bodies were). See **Capturing the lineup-move payload** below — after that capture, `buildLineupBody` in `src/espn/writes.ts` needs to be filled in from the real payload. Until then, a non-dry-run call fails loudly and explains why, rather than guessing at a shape and risking a malformed request against a live league.
+- **`set_lineup` (and the `move_to_ir` / `activate_from_ir` tools built on it) can execute real writes** — the lineup-move payload was captured live on 2026-09-10 (see **The lineup-move payload** below) and is implemented in `buildLineupBody` in `src/espn/writes.ts`, verified in dry run against a real roster.
 - **Rate limits are conservative and process-local** (2 reads/sec, 1 write per 5 sec) — fine for one interactive AI client, not built for concurrent callers.
 - **The read/write endpoint split matters**: reads go to `lm-api-reads.fantasy.espn.com`, writes to `lm-api-writes.fantasy.espn.com`. Mixing them up produces confusing errors.
 
-### Capturing the lineup-move payload
+### The lineup-move payload
 
-Once you're ready to enable real lineup writes, capture one real move from the ESPN site:
+Captured live on 2026-09-10 from a real bench↔FLEX swap. ESPN's lineup UI sends the move as a `ROSTER` transaction with one `LINEUP` item per player whose slot changed — a two-way swap is two items, each carrying *that player's own* prior slot as `fromLineupSlotId`:
+
+```json
+{
+  "isLeagueManager": false, "teamId": 5, "type": "ROSTER",
+  "memberId": "{SWID}", "scoringPeriodId": 1, "executionType": "EXECUTE",
+  "items": [
+    {"playerId": 4429023, "type": "LINEUP", "fromLineupSlotId": 20, "toLineupSlotId": 23},
+    {"playerId": 4568490, "type": "LINEUP", "fromLineupSlotId": 23, "toLineupSlotId": 20}
+  ]
+}
+```
+
+Implemented in `buildLineupBody` in `src/espn/writes.ts`. If ESPN ever changes this shape, re-capture it the same way:
 
 1. Open a fantasy.espn.com team page in a **logged-in** browser, on your team's roster tab.
-2. Open DevTools Console and paste this interceptor, then press Enter:
+2. Open DevTools Console and paste an interceptor, then press Enter. **Note:** ESPN's lineup-move request is sent via `XMLHttpRequest`, not `fetch` — a `fetch`-only interceptor (like the one used for the waiver-claim/cancel-claim payloads) will silently miss it. Wrap both:
 
    ```js
-   (function(){const of=window.fetch;window.fetch=async function(u,o){try{if(String(u).includes('lm-api-writes')){const a=JSON.parse(sessionStorage.ffcap||'[]');a.push({u:String(u),m:o&&o.method,b:o&&o.body,h:o&&o.headers});sessionStorage.ffcap=JSON.stringify(a);}}catch(e){}return of.apply(this,arguments);};})();
+   (function(){
+     const of = window.fetch;
+     window.fetch = async function(u,o){ try{ if(String(u).includes('lm-api-writes')){ const a=JSON.parse(sessionStorage.ffcap||'[]'); a.push({kind:'fetch',u:String(u),m:o&&o.method,b:o&&o.body}); sessionStorage.ffcap=JSON.stringify(a);} }catch(e){} return of.apply(this,arguments); };
+     const open = XMLHttpRequest.prototype.open, send = XMLHttpRequest.prototype.send;
+     XMLHttpRequest.prototype.open = function(method,url){ this.__cap_url=url; this.__cap_method=method; return open.apply(this,arguments); };
+     XMLHttpRequest.prototype.send = function(body){ try{ if(this.__cap_url && String(this.__cap_url).includes('lm-api-writes')){ const a=JSON.parse(sessionStorage.ffcap||'[]'); a.push({kind:'xhr',u:String(this.__cap_url),m:this.__cap_method,b:body}); sessionStorage.ffcap=JSON.stringify(a);} }catch(e){} return send.apply(this,arguments); };
+   })();
    ```
 
-3. Make **one** lineup move in the UI (drag a player, or use Move/Here) and click whatever confirms it.
-4. Immediately run `sessionStorage.ffcap` in the console and copy the result — the page redirects right after confirming and clears the normal network log, which is why the interceptor stashes it in `sessionStorage` instead.
-5. **Redact `espn_s2` and `SWID`** from the captured headers/cookies before sharing or committing anything derived from this capture.
-6. Use the captured `u` (URL), `b` (body), to fill in `buildLineupBody` in `src/espn/writes.ts`, matching the shape of the already-implemented `buildAddDropBody`.
+3. Make **one** lineup move in the UI (drag a player, or use Move/Here) and confirm it.
+4. Run `sessionStorage.ffcap` in the console and copy the result.
+5. **Redact `espn_s2` and `SWID`** from anything captured before sharing or committing it.
 
 ---
 

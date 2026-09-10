@@ -155,22 +155,33 @@ export async function cancelClaim(
 // ---------------------------------------------------------------------------
 // set_lineup / move_to_ir / activate_from_ir
 //
-// The POST body for a lineup move has not been captured from the live site
-// yet (see README "Capturing the lineup-move payload"). Validation and dry
-// runs work fully today; real execution is refused with a clear error until
-// LINEUP_BODY_BUILDER below is filled in from a captured payload.
+// Payload shape captured live on 2026-09-10 via the browser fetch/XHR
+// interceptor (see README "Capturing the lineup-move payload") from a real
+// bench<->FLEX swap: type ROSTER, one LINEUP item per player whose slot
+// changed, each carrying its OWN prior slot as fromLineupSlotId — a two-way
+// swap sends two items, not one.
 // ---------------------------------------------------------------------------
 
-function buildLineupBody(_opts: {
+export function buildLineupBody(opts: {
   teamId: number;
   scoringPeriodId: number;
   moves: LineupMove[];
   currentSlots: Map<number, number | undefined>;
 }): Record<string, unknown> {
-  throw new Error(
-    "set_lineup cannot execute yet: the ESPN lineup-move POST body has not been captured. " +
-      "See README 'Capturing the lineup-move payload' — once captured, fill in buildLineupBody() in src/espn/writes.ts.",
-  );
+  return {
+    isLeagueManager: false,
+    teamId: opts.teamId,
+    type: "ROSTER",
+    memberId: memberId(),
+    scoringPeriodId: opts.scoringPeriodId,
+    executionType: "EXECUTE",
+    items: opts.moves.map((m) => ({
+      playerId: m.playerId,
+      type: "LINEUP",
+      fromLineupSlotId: opts.currentSlots.get(m.playerId) ?? -1,
+      toLineupSlotId: m.toSlot,
+    })),
+  };
 }
 
 export async function setLineup(
@@ -181,14 +192,17 @@ export async function setLineup(
   const [roster, league] = await Promise.all([teamRoster(p, args.teamId), getLeague(p)]);
   const slotCounts = league.rosterSlotCounts ?? {};
   const validation = validateLineupMoves(p.sport, roster, args.moves, slotCounts);
+  const currentSlots = new Map(roster.map((pl) => [pl.id, pl.lineupSlotId]));
+  const scoringPeriodId = league.currentScoringPeriod ?? 1;
 
   if (dryRun || !writesEnabled()) {
+    const body = validation.valid
+      ? buildLineupBody({ teamId: args.teamId, scoringPeriodId, moves: validation.accepted, currentSlots })
+      : undefined;
     return {
       dryRun: true,
       validation,
-      wouldSend: validation.valid
-        ? { teamId: args.teamId, moves: validation.accepted }
-        : undefined,
+      wouldSend: body ? redactBody(body) : undefined,
       blockedReason: !dryRun && !writesEnabled() ? "WRITES_ENABLED is false; treated as dry run." : undefined,
     };
   }
@@ -197,8 +211,6 @@ export async function setLineup(
     return { dryRun: false, validation, blockedReason: "One or more moves failed validation; nothing was sent." };
   }
 
-  const currentSlots = new Map(roster.map((pl) => [pl.id, pl.lineupSlotId]));
-  const scoringPeriodId = await currentScoringPeriod(p);
   const body = buildLineupBody({ teamId: args.teamId, scoringPeriodId, moves: validation.accepted, currentSlots });
 
   const result = await postTransaction(p.sport, p.season, p.leagueId, body);
