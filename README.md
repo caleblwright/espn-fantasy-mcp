@@ -222,8 +222,6 @@ The ESPN v3 fantasy API is undocumented; this project leans on prior reverse-eng
 
 ## License
 
-Unlicensed / private. Uses your own ESPN session; not affiliated with or endorsed by ESPN.
-
-## License
-
 MIT. See [LICENSE](LICENSE).
+
+Uses your own ESPN session. Not affiliated with, endorsed by, or supported by ESPN. ESPN's fantasy API is undocumented and unofficial, and automating it may be against ESPN's terms of service. You run this at your own risk.
