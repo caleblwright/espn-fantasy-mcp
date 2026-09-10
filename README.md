@@ -188,7 +188,7 @@ npm start        # run the compiled server directly
 npm run dev      # run from source with tsx, no build step
 ```
 
-Project layout: `src/index.ts` (tool registration), `src/espn/client.ts` (HTTP, cookies, rate limiting, 401 handling), `src/espn/constants.ts` (slot/team/position tables), `src/espn/reads.ts` / `src/espn/writes.ts` (API calls and payload building), `src/lineup.ts` (local lineup-move validation), `src/snapshot.ts` (the text snapshot format), `test/` (unit tests, no network).
+Project layout: `src/index.ts` (tool registration and output schemas), `src/espn/client.ts` (HTTP, cookies, rate limiting, 401 handling), `src/espn/constants.ts` (slot/team/position tables), `src/espn/reads.ts` / `src/espn/writes.ts` (API calls and payload building), `src/lineup.ts` (local lineup-move validation), `src/optimalLineup.ts` (the `optimal_lineup` suggestion algorithm), `src/snapshot.ts` (the text snapshot format), `test/` (unit tests, no network).
 
 ## Credits
 
