@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { pathToFileURL } from "node:url";
+import { getReportContext } from "./report.js";
 import { z } from "zod";
 import { loadConfig } from "./env.js";
 import { EspnApiError } from "./espn/client.js";
@@ -22,6 +24,7 @@ import { computeOptimalLineup } from "./optimalLineup.js";
 import { waiverClaim, addFreeAgent, cancelClaim, setLineup, moveToIr, activateFromIr } from "./espn/writes.js";
 import { IR_SLOT_ID } from "./espn/constants.js";
 
+export function createServer(forceReadOnly = false) {
 const cfg = loadConfig();
 
 const server = new McpServer({ name: "espn-fantasy-mcp", version: "0.1.0" });
@@ -116,7 +119,7 @@ const playerOutputSchema = z.object({
   lineupSlotName: z.string().optional(),
   injuryStatus: z.string().optional(),
   locked: z.boolean().optional(),
-  seasonProjection: z.number(),
+  seasonProjection: z.number().optional(),
   periodProjection: z.number().optional(),
   periodActual: z.number().optional(),
   percentOwned: z.number().optional(),
@@ -132,6 +135,7 @@ const getLeagueOutputSchema = {
   currentScoringPeriod: z.number().optional(),
   currentMatchupPeriod: z.number().optional(),
   rosterSlotCounts: z.record(z.string(), z.number()).optional(),
+  scoringSettings: passthroughObject,
   acquisitionSettings: passthroughObject,
   scheduleSettings: passthroughObject,
   tradeSettings: passthroughObject,
@@ -248,7 +252,7 @@ const optimalLineupOutputSchema = {
       locked: z.boolean().optional(),
     }),
   ),
-  bench: z.array(z.object({ playerId: z.number(), name: z.string(), projection: z.number(), locked: z.boolean().optional() })),
+  bench: z.array(z.object({ playerId: z.number(), name: z.string(), projection: z.number().nullable(), locked: z.boolean().optional() })),
 };
 
 // ---------------------------------------------------------------------------
@@ -286,11 +290,11 @@ server.registerTool(
     title: "Get Rosters",
     description:
       "Every team's roster, or one team's roster if team_id is given. Each player includes id, name, position, pro team, eligible slots, current lineup slot, injury status, lock state, and season/period projections.",
-    inputSchema: { ...leagueParamsShape, team_id: z.number().int().optional().describe("Limit to one team id.") },
+    inputSchema: { ...leagueParamsShape, team_id: z.number().int().optional().describe("Limit to one team id."), scoring_period_id: z.number().int().positive().optional() },
     outputSchema: { result: z.array(rosterOutputSchema) },
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
   },
-  (args) => tryCatch(() => getRosters(toParams(args), args.team_id)),
+  (args) => tryCatch(() => getRosters(toParams(args), args.team_id, args.scoring_period_id)),
 );
 
 server.registerTool(
@@ -298,11 +302,12 @@ server.registerTool(
   {
     title: "Get Free Agents",
     description:
-      "Free agents and waiver-wire players, sorted by ownership percent (default) or projection. Optionally filter by lineup slot id (see get_league for slot ids, or the README's slot tables).",
+      "Free agents and waiver-wire players, fetched from the top-owned candidate pool, optionally sorted within that pool by the requested week’s projection. This is not a complete waiver pool. Optionally filter by lineup slot id (see get_league for slot ids, or the README's slot tables).",
     inputSchema: {
       ...leagueParamsShape,
       position_slot_id: z.number().int().optional().describe("Filter to one lineup slot id, e.g. 2 for RB in football."),
       limit: z.number().int().min(1).max(200).default(60).describe("Max players to return."),
+      scoring_period_id: z.number().int().positive().optional().describe("Week to fetch; defaults to the league current scoring period."),
       sort_by: z.enum(["owned", "projection"]).default("owned"),
     },
     outputSchema: { result: z.array(playerOutputSchema) },
@@ -310,7 +315,7 @@ server.registerTool(
   },
   (args) =>
     tryCatch(() =>
-      getFreeAgents(toParams(args), { positionSlotId: args.position_slot_id, limit: args.limit, sortBy: args.sort_by }),
+      getFreeAgents(toParams(args), { positionSlotId: args.position_slot_id, limit: args.limit, sortBy: args.sort_by, scoringPeriodId: args.scoring_period_id }),
     ),
 );
 
@@ -418,7 +423,7 @@ server.registerTool(
   {
     title: "Optimal Lineup Suggestion",
     description:
-      "Suggests a starting lineup for one team: fills the most restrictive slots first (fewest eligible roster players), then the best remaining projection for each slot — the same approach the cheat sheets describe by hand. A heuristic, not a guaranteed-optimal assignment. Ranks by season projection by default, or by a specific scoring period's projection if scoring_period_id is given (a bye-week/no-game player ranks 0 for that period, not by season total). Locked players keep their current slot. This is a suggestion only — pass the resulting moves to set_lineup yourself if you want to apply them.",
+      "Suggests a starting lineup for one team: fills the most restrictive slots first (fewest eligible roster players), then the best remaining projection for each slot — the same approach the cheat sheets describe by hand. A heuristic, not a guaranteed-optimal assignment. Ranks by season projection by default, or by a specific scoring period's projection if scoring_period_id is given (players with missing projections are excluded from new starting assignments; missing does not mean zero). Locked players keep their current slot. This is a suggestion only — pass the resulting moves to set_lineup yourself if you want to apply them.",
     inputSchema: {
       ...leagueParamsShape,
       team_id: z.number().int().default(cfg.defaultTeamId ?? 0),
@@ -442,6 +447,7 @@ server.registerTool(
 // writes — all dry_run: true by default
 // ---------------------------------------------------------------------------
 
+if (!cfg.readOnly && !forceReadOnly) {
 const dryRunSchema = z
   .boolean()
   .default(true)
@@ -585,21 +591,21 @@ server.registerTool(
   },
 );
 
-// ---------------------------------------------------------------------------
-// startup
-// ---------------------------------------------------------------------------
+} // write tools are not registered in read-only mode
 
-async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error(
-    `espn-fantasy-mcp running (sport=${cfg.defaultSport}, season=${cfg.defaultSeason}, writes ${cfg.writesEnabled ? "ENABLED" : "disabled (dry run only)"})`,
-  );
+server.registerTool("get_report_context", {
+  title: "Fantasy Football Report Context",
+  description: "Fresh, read-only football data for waiver, trade, and lineup advice. Includes the selected team, weekly free-agent candidates, scoring rules, matchups, other rosters and data-quality warnings. Returns data, not AI recommendations. Supplement with current sourced injury and usage news.",
+  inputSchema: { ...leagueParamsShape, team_id: z.number().int().positive().default(cfg.defaultTeamId ?? 0), scoring_period_id: z.number().int().positive().optional() },
+  annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+}, (args) => tryCatch(() => getReportContext(toParams(args), args.team_id, args.scoring_period_id)));
+return server;
 }
 
-main().catch((err) => {
-  console.error("Fatal error starting espn-fantasy-mcp:", err instanceof Error ? err.message : err);
-  process.exit(1);
-});
-
-void lineupSlotMap; // referenced only for the type import in tool descriptions above
+async function main() {
+  await createServer().connect(new StdioServerTransport());
+  console.error("espn-fantasy-mcp ready");
+}
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch(() => { console.error("Unable to start ESPN MCP server. Check configuration."); process.exitCode = 1; });
+}

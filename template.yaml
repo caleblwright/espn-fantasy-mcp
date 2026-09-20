@@ -1,0 +1,73 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Read-only ESPN fantasy football MCP on AWS Lambda
+Parameters:
+  LeagueId:
+    Type: String
+    AllowedPattern: '[0-9]+'
+  TeamId:
+    Type: String
+    AllowedPattern: '[1-9][0-9]*'
+  Season:
+    Type: String
+    Default: '2026'
+    AllowedPattern: '[0-9]{4}'
+  EspnS2:
+    Type: String
+    NoEcho: true
+    MinLength: 1
+  EspnSwid:
+    Type: String
+    NoEcho: true
+    MinLength: 1
+  McpAuthToken:
+    Type: String
+    NoEcho: true
+    MinLength: 32
+Resources:
+  EspnFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      DockerContext: .
+      Dockerfile: Dockerfile.lambda
+      DockerTag: reporting
+    Properties:
+      PackageType: Image
+      Architectures: [x86_64]
+      MemorySize: 512
+      Timeout: 60
+      Policies:
+        - AWSLambdaBasicExecutionRole
+      FunctionUrlConfig:
+        # MCP clients send our bearer token rather than an AWS SigV4 signature.
+        # src/http.ts enforces the token on every /mcp request.
+        AuthType: NONE
+        InvokeMode: BUFFERED
+      Environment:
+        Variables:
+          HOST: '0.0.0.0'
+          PORT: '3000'
+          ESPN_SPORT: ffl
+          ESPN_SEASON: !Ref Season
+          ESPN_LEAGUE_ID: !Ref LeagueId
+          ESPN_TEAM_ID: !Ref TeamId
+          ESPN_S2: !Ref EspnS2
+          ESPN_SWID: !Ref EspnSwid
+          MCP_AUTH_TOKEN: !Ref McpAuthToken
+          READ_ONLY: 'true'
+          WRITES_ENABLED: 'false'
+          AWS_LWA_PORT: '3000'
+          AWS_LWA_READINESS_CHECK_PATH: /health
+          AWS_LWA_READINESS_CHECK_HEALTHY_STATUS: '200'
+          AWS_LWA_INVOKE_MODE: buffered
+  EspnLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${EspnFunction}
+      RetentionInDays: 7
+Outputs:
+  McpEndpoint:
+    Description: Authenticated MCP endpoint; requires your bearer token
+    Value: !Sub ${EspnFunctionUrl.FunctionUrl}mcp
+  FunctionName:
+    Value: !Ref EspnFunction

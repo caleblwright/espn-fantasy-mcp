@@ -5,3 +5,9 @@ logs/*.jsonl
 *.log
 .refs/
 .claude/
+
+.env.*
+!.env.example
+
+.aws-sam/
+samconfig.toml

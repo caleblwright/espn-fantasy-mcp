@@ -48,7 +48,7 @@ export interface NormalizedPlayer {
   lineupSlotName?: string;
   injuryStatus?: string;
   locked?: boolean;
-  seasonProjection: number;
+  seasonProjection?: number;
   periodProjection?: number;
   periodActual?: number;
   percentOwned?: number;
@@ -67,7 +67,7 @@ function statValue(
       s.scoringPeriodId === scoringPeriodId &&
       s.seasonId === seasonId,
   );
-  return stat?.appliedTotal !== undefined ? Math.round(stat.appliedTotal) : undefined;
+  return stat?.appliedTotal !== undefined ? stat.appliedTotal : undefined;
 }
 
 export function normalizePlayer(
@@ -97,7 +97,7 @@ export function normalizePlayer(
       opts.lineupSlotId !== undefined ? (slotMap[opts.lineupSlotId] ?? String(opts.lineupSlotId)) : undefined,
     injuryStatus: player.injuryStatus,
     locked: opts.locked,
-    seasonProjection: statValue(player, 1, 0, season) ?? 0,
+    seasonProjection: statValue(player, 1, 0, season),
     periodProjection: opts.periodId !== undefined ? statValue(player, 1, opts.periodId, season) : undefined,
     periodActual: opts.periodId !== undefined ? statValue(player, 0, opts.periodId, season) : undefined,
     percentOwned: opts.percentOwned !== undefined ? Math.round(opts.percentOwned) : undefined,
@@ -119,6 +119,7 @@ export async function getLeague(p: LeagueParams) {
     currentScoringPeriod: data.status?.latestScoringPeriod,
     currentMatchupPeriod: data.status?.currentMatchupPeriod,
     rosterSlotCounts: s?.rosterSettings?.lineupSlotCounts,
+    scoringSettings: s?.scoringSettings,
     acquisitionSettings: s?.acquisitionSettings,
     scheduleSettings: s?.scheduleSettings,
     tradeSettings: s?.tradeSettings
@@ -153,7 +154,7 @@ export async function getTeams(p: LeagueParams) {
 // ---------------------------------------------------------------------------
 
 export async function getRosters(p: LeagueParams, teamId?: number, periodId?: number) {
-  const data = await fetchLeague(p, ["mRoster", "mTeam"]);
+  const data = await fetchLeague(p, ["mRoster", "mTeam"], periodId === undefined ? {} : { scoringPeriodId: periodId });
   const teams = (data.teams || []).filter((t) => teamId === undefined || t.id === teamId);
   return teams.map((t) => ({
     teamId: t.id,
@@ -177,10 +178,15 @@ export interface FreeAgentParams {
   positionSlotId?: number;
   limit?: number;
   sortBy?: "owned" | "projection";
+  scoringPeriodId?: number;
 }
 
 export async function getFreeAgents(p: LeagueParams, opts: FreeAgentParams = {}) {
   const limit = opts.limit ?? 60;
+  const periodId = opts.scoringPeriodId ?? (await getLeague(p)).currentScoringPeriod;
+  if (!Number.isInteger(periodId) || (periodId ?? 0) < 1) {
+    throw new Error("No active scoring period available. Supply scoring_period_id explicitly.");
+  }
   const filter: Record<string, unknown> = {
     players: {
       filterStatus: { value: ["FREEAGENT", "WAIVERS"] },
@@ -194,7 +200,7 @@ export async function getFreeAgents(p: LeagueParams, opts: FreeAgentParams = {})
   const data = await fetchLeague(
     p,
     ["kona_player_info"],
-    { scoringPeriodId: 1 },
+    { scoringPeriodId: periodId! },
     { "X-Fantasy-Filter": JSON.stringify(filter) },
   );
   const players = ((data as unknown as { players?: Array<{ player: EspnPlayer; onTeamId?: number }> }).players ||
@@ -203,11 +209,12 @@ export async function getFreeAgents(p: LeagueParams, opts: FreeAgentParams = {})
   let normalized = players.map((x) =>
     normalizePlayer(p.sport, p.season, x.player, {
       percentOwned: x.player.ownership?.percentOwned,
+      periodId,
     }),
   );
 
   if (opts.sortBy === "projection") {
-    normalized = normalized.sort((a, b) => b.seasonProjection - a.seasonProjection);
+    normalized = normalized.sort((a, b) => (b.periodProjection ?? -Infinity) - (a.periodProjection ?? -Infinity));
   }
   return normalized;
 }

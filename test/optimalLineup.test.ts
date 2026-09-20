@@ -69,7 +69,7 @@ test("a locked bench player is never suggested into a starting slot", () => {
   assert.ok(result.bench.some((b) => b.name === "RB-locked-bench"));
 });
 
-test("period mode ranks a player with no projection for that period as 0, not by season total", () => {
+test("period mode excludes missing projections rather than substituting season totals", () => {
   const roster = [
     player({ id: 1, name: "Starter-this-week", seasonProjection: 10, periodProjection: 15, eligibleSlotIds: [2, 20] }),
     player({ id: 2, name: "Bye-week-stud", seasonProjection: 300, periodProjection: undefined, eligibleSlotIds: [2, 20] }),

@@ -58,12 +58,11 @@ const scheduleRead = makeLimiter(500);
 const scheduleWrite = makeLimiter(5000);
 
 async function rawFetchJson(url: string, headers: Record<string, string>): Promise<unknown> {
-  const res = await fetch(url, { headers });
-  if (res.status === 401) throw new EspnApiError(authErrorMessage(), 401);
+  const res = await fetch(url, { headers, signal: AbortSignal.timeout(15000) });
+  if (res.status === 401 || res.status === 403) throw new EspnApiError(authErrorMessage(), res.status);
   if (!res.ok) {
-    const body = await res.text().catch(() => "");
     throw new EspnApiError(
-      `ESPN API request failed with status ${res.status}${body ? `: ${body.slice(0, 300)}` : ""}`,
+      `ESPN API request failed with status ${res.status}`,
       res.status,
     );
   }

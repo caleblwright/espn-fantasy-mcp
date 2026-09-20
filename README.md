@@ -1,5 +1,8 @@
 # espn-fantasy-mcp
 
+This fork adds read-only fantasy football reporting. Start with [Reporting setup](docs/reporting.md). `READ_ONLY=true` is now the default, so write tools below are hidden unless explicitly enabled. HTTP mode is always read-only.
+
+
 A local MCP server that reads and writes ESPN fantasy sports (football, basketball, baseball) using **your own ESPN session cookies**. It replaces manually driving a browser pane for ESPN: Claude Code or Codex can call its tools directly. No web UI, no cloud, no server — one Node process talking stdio to your AI client, and HTTPS to ESPN.
 
 It does **not** propose, accept, or reject trades. That's out of scope permanently.
