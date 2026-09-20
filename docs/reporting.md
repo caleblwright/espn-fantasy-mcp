@@ -2,11 +2,13 @@
 
 This fork supplies ESPN data to an MCP client that writes recommendations. It does not call an LLM or send email itself. No report is scheduled by deploying this repository.
 
-## Cloud deployment (Railway)
+## Cloud deployment (AWS Lambda)
 
-Deploy this repository using the included Dockerfile and railway.json. Use a single replica. No database or persistent disk is needed. The service listens on the host-provided PORT, binds to 0.0.0.0, and offers GET /health for a liveness check. Health does not verify ESPN credentials. Keep the service available when scheduled reports run.
+Use [AWS setup](aws.md) and `template.yaml`. Lambda runs the HTTP server through AWS Lambda Web Adapter, on demand, with a Function URL. The template sets 512 MB memory, a 60-second timeout, and seven-day log retention. No VPC, NAT Gateway, API Gateway, database or always-on instance is required. Container images are stored in Amazon ECR.
 
-Set these in Railway's service Variables UI before deployment:
+The server uses stateless buffered JSON MCP responses. HTTP mode always exposes only read tools. The Function URL uses application bearer authentication, so the target client must support that connection method.
+
+Environment variables:
 
 | Variable | Value |
 | --- | --- |
@@ -22,7 +24,7 @@ Set these in Railway's service Variables UI before deployment:
 
 Generate MCP_AUTH_TOKEN locally with `openssl rand -hex 32` or a password manager. Enter it directly in the host and client secret settings, not a Git commit or chat. ESPN cookies remain only on the server; the client uses the separate MCP token.
 
-Generate a public HTTPS domain for the service. The MCP endpoint is `https://YOUR-HOST/mcp`. Connect using a client that supports Streamable HTTP with `Authorization: Bearer <MCP_AUTH_TOKEN>`. This is single-owner bearer authentication, not OAuth. If the target ChatGPT app setup requires OAuth, an OAuth gateway/plugin connection is still needed; a URL alone is not sufficient. Do not disable authentication to work around that requirement.
+AWS assigns an HTTPS Function URL to the service. The MCP endpoint is `https://YOUR-HOST/mcp`. Connect using a client that supports Streamable HTTP with `Authorization: Bearer <MCP_AUTH_TOKEN>`. This is single-owner bearer authentication, not OAuth. If the target ChatGPT app setup requires OAuth, an OAuth gateway/plugin connection is still needed; a URL alone is not sufficient. Do not disable authentication to work around that requirement.
 
 HTTP mode always omits ESPN write tools, even if environment flags request them. `/health` returns only `ok`; all MCP requests require authentication. Browser Origin requests are rejected. TLS is terminated by the cloud host.
 

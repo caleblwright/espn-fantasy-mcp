@@ -8,3 +8,6 @@ logs/*.jsonl
 
 .env.*
 !.env.example
+
+.aws-sam/
+samconfig.toml

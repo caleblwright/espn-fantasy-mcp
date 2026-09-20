@@ -5,3 +5,6 @@ dist
 .env.*
 logs
 *.log
+
+.aws-sam
+samconfig.toml
