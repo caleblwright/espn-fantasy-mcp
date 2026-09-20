@@ -30,6 +30,7 @@ export interface EspnConfig {
   defaultLeagueId?: string;
   defaultTeamId?: number;
   writesEnabled: boolean;
+  readOnly: boolean;
 }
 
 let cached: EspnConfig | undefined;
@@ -48,7 +49,8 @@ export function loadConfig(): EspnConfig {
   const leagueId = get("ESPN_LEAGUE_ID") || undefined;
   const teamIdRaw = get("ESPN_TEAM_ID");
   const teamId = teamIdRaw ? Number(teamIdRaw) : undefined;
-  const writesEnabled = (get("WRITES_ENABLED") || "false").toLowerCase() === "true";
+  const readOnly = (get("READ_ONLY") || "true").toLowerCase() !== "false";
+  const writesEnabled = !readOnly && (get("WRITES_ENABLED") || "false").toLowerCase() === "true";
 
   if (!["ffl", "fba", "flb"].includes(sport)) {
     throw new Error(`ESPN_SPORT must be one of ffl, fba, flb (got "${sport}")`);
@@ -62,6 +64,7 @@ export function loadConfig(): EspnConfig {
     defaultLeagueId: leagueId,
     defaultTeamId: teamId,
     writesEnabled,
+    readOnly,
   };
   return cached;
 }

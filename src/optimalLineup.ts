@@ -15,7 +15,7 @@ export interface SlotAssignment {
 export interface OptimalLineupResult {
   usingPeriodProjection: boolean;
   starters: SlotAssignment[];
-  bench: Array<{ playerId: number; name: string; projection: number; locked?: boolean }>;
+  bench: Array<{ playerId: number; name: string; projection: number | null; locked?: boolean }>;
 }
 
 /**
@@ -44,7 +44,7 @@ export function computeOptimalLineup(
   const bench = BENCH_SLOT_ID[sport];
   const ir = IR_SLOT_ID[sport];
 
-  const projectionOf = (p: NormalizedPlayer) => (usingPeriodProjection ? (p.periodProjection ?? 0) : p.seasonProjection);
+  const projectionOf = (p: NormalizedPlayer) => (usingPeriodProjection ? (p.periodProjection ?? null) : (p.seasonProjection ?? null));
   const isStartSlot = (slotId: number | undefined) => slotId !== undefined && slotId !== bench && slotId !== ir;
 
   const slotInstances: number[] = [];
@@ -101,8 +101,8 @@ export function computeOptimalLineup(
     }
     const slotId = slotInstances.splice(bestSlotIdx, 1)[0];
     const pick = [...available.values()]
-      .filter((p) => p.eligibleSlotIds.includes(slotId))
-      .sort((a, b) => projectionOf(b) - projectionOf(a))[0];
+      .filter((p) => p.eligibleSlotIds.includes(slotId) && projectionOf(p) !== null && p.lineupSlotId !== ir && !["OUT", "INJURY_RESERVE", "IR", "SUSPENSION", "SUSPENDED"].includes((p.injuryStatus ?? "").toUpperCase()))
+      .sort((a, b) => (projectionOf(b) ?? -Infinity) - (projectionOf(a) ?? -Infinity))[0];
 
     if (!pick) {
       starters.push({ slotId, slotName: slotNames[slotId] ?? String(slotId), playerId: null, playerName: null, projection: null, isChange: false });
@@ -127,7 +127,7 @@ export function computeOptimalLineup(
 
   const bench_ = roster
     .filter((p) => !assignedIds.has(p.id))
-    .sort((a, b) => projectionOf(b) - projectionOf(a))
+    .sort((a, b) => (projectionOf(b) ?? -Infinity) - (projectionOf(a) ?? -Infinity))
     .map((p) => ({ playerId: p.id, name: p.name, projection: projectionOf(p), locked: p.locked }));
 
   return { usingPeriodProjection, starters, bench: bench_ };
